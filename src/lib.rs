@@ -32,6 +32,14 @@ pub struct Item {
     pub comment: String,
 }
 
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct ItemIterator {
+    #[serde(rename = "Cursor", default)]
+    pub cursor: String,
+    #[serde(rename = "Items")]
+    pub items: Vec<Item>,
+}
+
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct Feedback {
     #[serde(rename = "FeedbackType")]
@@ -71,6 +79,8 @@ pub enum Error {
     Reqwest(#[from] reqwest::Error),
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
+    #[error("URL error: {0}")]
+    Url(String),
 }
 
 #[derive(Default)]
@@ -133,6 +143,16 @@ impl Gorse {
             &(),
         )
         .await
+    }
+
+    pub async fn search_items(&self, query: &str, n: usize) -> Result<ItemIterator> {
+        let mut url = reqwest::Url::parse(&format!("{}api/items", self.entry_point))
+            .map_err(|error| Error::Url(error.to_string()))?;
+        url.query_pairs_mut()
+            .append_pair("q", query)
+            .append_pair("n", &n.to_string());
+        self.request::<(), ItemIterator>(Method::GET, url.to_string(), &())
+            .await
     }
 
     pub async fn delete_item(&self, item_id: &str) -> Result<RowAffected> {
@@ -303,6 +323,10 @@ mod tests {
         let resp = client.get_item("2000").await?;
         assert_eq!(item, resp);
 
+        let result = client.search_items("Toy Story", 3).await?;
+        assert!(!result.items.is_empty());
+        assert_eq!(result.items[0].comment, "Toy Story (1995)");
+
         let r = client.delete_item("2000").await?;
         assert_eq!(r.row_affected, 1);
         match client.get_item("2000").await {
@@ -407,8 +431,8 @@ pub mod blocking {
     use serde::{Deserialize, Serialize};
 
     use crate::{
-        Error, Feedback, Item, Method, RecommendOptions, Result, RowAffected, Score, StatusCode,
-        User,
+        Error, Feedback, Item, ItemIterator, Method, RecommendOptions, Result, RowAffected, Score,
+        StatusCode, User,
     };
 
     #[derive(Debug, Clone)]
@@ -461,6 +485,15 @@ pub mod blocking {
                 format!("{}api/item/{}", self.entry_point, item_id),
                 &(),
             )
+        }
+
+        pub fn search_items(&self, query: &str, n: usize) -> Result<ItemIterator> {
+            let mut url = reqwest::Url::parse(&format!("{}api/items", self.entry_point))
+                .map_err(|error| Error::Url(error.to_string()))?;
+            url.query_pairs_mut()
+                .append_pair("q", query)
+                .append_pair("n", &n.to_string());
+            self.request::<(), ItemIterator>(Method::GET, url.to_string(), &())
         }
 
         pub fn delete_item(&self, item_id: &str) -> Result<RowAffected> {
@@ -623,6 +656,10 @@ pub mod blocking {
             assert_eq!(r.row_affected, 1);
             let resp = client.get_item("2000")?;
             assert_eq!(item, resp);
+
+            let result = client.search_items("Toy Story", 3)?;
+            assert!(!result.items.is_empty());
+            assert_eq!(result.items[0].comment, "Toy Story (1995)");
 
             let r = client.delete_item("2000")?;
             assert_eq!(r.row_affected, 1);
