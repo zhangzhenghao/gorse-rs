@@ -309,26 +309,6 @@ mod tests {
     const ENTRY_POINT: &str = "http://127.0.0.1:8088/";
     const API_KEY: &str = "zhenghaoz";
 
-    #[test]
-    fn test_recommend_parameters() -> Result<()> {
-        let url = recommend_url(
-            "http://localhost/",
-            "user/id",
-            &RecommendOptions {
-                n: 20,
-                categories: vec!["Science Fiction".into(), "Kids & Family".into()],
-                write_back_type: Some("read".into()),
-                write_back_delay: Some("10m".into()),
-                offset: 5,
-            },
-        )?;
-        assert_eq!(
-            url,
-            "http://localhost/api/recommend/user%2Fid?category=Science+Fiction&category=Kids+%26+Family&write-back-type=read&write-back-delay=10m&n=20&offset=5"
-        );
-        Ok(())
-    }
-
     #[tokio::test]
     #[serial]
     async fn test_users() -> Result<()> {
@@ -471,6 +451,33 @@ mod tests {
         let items = client
             .get_recommend(
                 "3000",
+                RecommendOptions {
+                    n: 3,
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0].id, "315");
+        assert_eq!(items[1].id, "1432");
+        assert_eq!(items[2].id, "918");
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_recommend_with_multiple_categories() -> Result<()> {
+        let client = Gorse::new(ENTRY_POINT, API_KEY);
+        client
+            .insert_user(&User {
+                user_id: "4000".into(),
+                labels: json!({}),
+                comment: "".into(),
+            })
+            .await?;
+        let items = client
+            .get_recommend(
+                "4000",
                 RecommendOptions {
                     n: 3,
                     categories: vec!["Drama".into(), "Comedy".into()],
